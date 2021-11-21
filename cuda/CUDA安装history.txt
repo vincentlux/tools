@@ -1,0 +1,76 @@
+#操作系统centos7 cuda和runtime安装，（安装cuda可以一并安装nvida驱动，也可单独下载nvida驱动安装，cuda可安装多个版本）
+#下载cuda，连接为官网11.4版本
+wget https://developer.download.nvidia.com/compute/cuda/11.4.2/local_installers/cuda_11.4.2_470.57.02_linux.run
+#安装所需的软件
+yum install gcc-c++ kernel-devel-$(uname -r) kernel-headers-$(uname -r)  -y
+禁用默认驱动，编辑最后添加
+vim  /usr/lib/modprobe.d/dist-blacklist.conf
+
+#######禁用默认nouveau###
+blacklist nouveau
+options nouveau modeset=0
+#######################
+
+#备份原始内核
+mv /boot/initramfs-$(uname -r).img /boot/initramfs-$(uname -r).img.bak
+#重新生成
+dracut /boot/initramfs-$(uname -r).img $(uname -r)
+reboot
+#查看是否已禁用默认nouveau，无输出标识已禁用
+lsmod | grep nouveau
+#开始安装
+chmod  +x cuda_11.4.2_470.57.02_linux.run 
+#accept后可取消示例demo（一般是后三项中的“X”）
+./cuda_11.4.2_470.57.02_linux.run 
+#添加配置变量，根据具体版本修改
+vim /etc/profile
+
+# cuda 默认安装路径为/usr/local/cuda-11.0
+export  PATH=/usr/local/cuda-11.4/bin:$PATH
+export  LD_LIBRARY_PATH=/usr/local/cuda-11.4/lib64$LD_LIBRARY_PATH
+
+#配置生效
+source  /etc/profile
+#查看nvida显卡信息
+nvidia-smi 
+#查看cuda版本
+nvcc --version
+#上传runtime目录汇总rpm包
+rpm -ivh docker-runtime/*.rpm
+
+#配置nvidia-rumtime，镜像加速等优化
+
+vim /etc/docker/daemon.json
+
+{
+    "default-runtime": "nvidia",
+    "runtimes": {
+        "nvidia": {
+            "path": "/usr/bin/nvidia-container-runtime",
+            "runtimeArgs": []
+        }
+    },
+     "exec-opts": ["native.cgroupdriver=systemd"],
+    "log-driver": "json-file",
+    "log-opts": { "max-size": "100m", "max-file": "3"},
+    "max-concurrent-downloads": 10,
+    "max-concurrent-uploads": 10,
+    "registry-mirrors": ["https://3284ug2c.mirror.aliyuncs.com"],
+    "storage-driver": "overlay2",
+    "storage-opts": [
+    "overlay2.override_kernel_check=true"
+    ]
+}
+
+#重载docker
+systemctl daemon-reload
+systemctl  restart docker 
+#查看docker 信息和存储位置
+docker info
+#可选参数，修改docker默认存储路径，通过--data-root=/home/docker 指定（推荐方式，原来--graph=/home/docker弃用），或者在daemon.json配置
+vim /usr/lib/systemd/system/docker.service
+
+ExecStart=/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock  --data-root=/home/docker
+
+
+
